@@ -1,0 +1,31 @@
+# Builds the latest commit of the default branch:  makepkg -si
+pkgname=amber-player-git
+pkgver=r1
+pkgrel=1
+pkgdesc="Qt 6 music player for local MP3, FLAC and WebM files, with lyrics over blurred artwork"
+arch=('x86_64' 'aarch64')
+url="https://github.com/knap43/music-player-qt"
+license=('unknown')
+depends=('qt6-base' 'qt6-multimedia' 'taglib')
+makedepends=('cmake' 'git')
+optdepends=('qt6-multimedia-ffmpeg: recommended playback backend for Qt Multimedia')
+provides=('amber-player')
+conflicts=('amber-player')
+source=("$pkgname::git+$url.git")
+sha256sums=('SKIP')
+
+pkgver() {
+  cd "$pkgname"
+  printf "r%s.%s" "$(git rev-list --count HEAD)" "$(git rev-parse --short=7 HEAD)"
+}
+
+build() {
+  cmake -S "$pkgname" -B build \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_INSTALL_PREFIX=/usr
+  cmake --build build
+}
+
+package() {
+  DESTDIR="$pkgdir" cmake --install build
+}
