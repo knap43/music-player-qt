@@ -13,7 +13,8 @@ namespace Metadata {
 // Tags and duration. Fields TagLib cannot provide are guessed from the path.
 Track readTrack(const QString &path);
 
-// Embedded artwork first, then an image sitting next to the file.
+// The folder is the album, so its cover image (cover.jpg, folder.png, ...)
+// wins; embedded artwork is the fallback.
 QImage readCover(const QString &path);
 QImage readEmbeddedCover(const QString &path);
 QImage findFolderCover(const QString &directory);

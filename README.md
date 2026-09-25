@@ -8,9 +8,16 @@ grey with a yellowish-orange (`#e1a34f`) accent, and every corner is square.
 ## Features
 
 - **Formats:** MP3, FLAC and WebM.
-- **Album library:** Amber scans a music folder recursively and groups the
-  tracks into albums, with cover thumbnails. Each album expands to show its
-  tracks, and a search box filters by album, artist or track.
+- **Folders are albums:** Amber scans a music folder recursively, and every
+  folder that directly contains audio files is one album. The album is named
+  after the folder, and its tracks are ordered by file name, with numbers
+  compared by value (`2 …` comes before `10 …`). Album tags are ignored, so
+  two folders with the same album tag stay separate, and one folder with
+  mixed tags stays together. A `Disc 2` sub-folder is an album of its own.
+  Under each album name the library shows the folder it lives in (for example
+  the artist folder in an `Artist/Album` layout). Albums expand to show their
+  tracks, and a search box filters by folder, track title or artist. Track
+  titles and artists still come from the tags, falling back to the file name.
 - **Queue:** you can add whole albums or single tracks:
   - double-click, or press <kbd>Enter</kbd>, to append;
   - <kbd>Ctrl</kbd>+<kbd>Enter</kbd> plays the selection now;
@@ -23,9 +30,10 @@ grey with a yellowish-orange (`#e1a34f`) accent, and every corner is square.
   plays every queued track once. Tracks you add while shuffling are mixed in
   among the tracks still to come; *Play Next* is always honoured; and
   *Previous* retraces the shuffled history.
-- **Artwork:** Amber uses embedded cover art (ID3 `APIC`, FLAC pictures, and
-  Matroska attachments with TagLib ≥ 2.2). Failing that, it looks for
-  `cover.jpg`, `folder.png` and the like next to the file.
+- **Artwork:** Amber uses the album folder's own image first (`cover.jpg`,
+  `folder.png`, `front.jpg` and the like). Failing that, it uses cover art
+  embedded in the tracks: ID3 `APIC`, FLAC pictures, and Matroska
+  attachments with TagLib ≥ 2.2.
 - **Lyrics, drawn over the blurred cover:**
   - a matching `.lrc` file next to the track (`Song.flac` → `Song.lrc`);
   - embedded synchronised lyrics (ID3 `SYLT`);
@@ -99,9 +107,8 @@ always safe.
 ## Notes on WebM
 
 TagLib reads WebM (Matroska) tags from version 2.2 on. With an older TagLib,
-Amber falls back to the file and folder names, then fills in the title, artist,
-album, duration and artwork from the stream itself once the track starts
-playing.
+Amber falls back to the file name, then fills in the title, artist, duration
+and artwork from the stream itself once the track starts playing.
 
 ## Tests
 
@@ -109,15 +116,16 @@ playing.
 cmake -B build -DAMBER_BUILD_TESTS=ON && cmake --build build && ctest --test-dir build
 ```
 
-The tests cover the LRC/plain lyrics parser and the queue logic, including
-shuffle, repeat, reordering and removal of the playing track.
+The tests cover the LRC/plain lyrics parser, folder-based album grouping and
+ordering, and the queue logic, including shuffle, repeat, reordering and
+removal of the playing track.
 
 ## Source layout
 
 | File | Purpose |
 | --- | --- |
 | `src/MainWindow.*` | Three-pane window, menus, shortcuts, session state |
-| `src/Library.*` | Background folder scan, album grouping, tag and thumbnail caches |
+| `src/Library.*` | Background folder scan, one album per folder, tag and thumbnail caches |
 | `src/LibraryView.*` | Album/track tree, search filter, drag source, context menu |
 | `src/PlayQueue.*` | Queue model with shuffle order and repeat modes |
 | `src/QueueView.*` | Queue list, reordering and drop target |

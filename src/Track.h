@@ -10,9 +10,6 @@ struct Track {
     QString path;
     QString title;
     QString artist;
-    QString album;
-    QString albumArtist;
-    QString genre;
     int year = 0;
     int trackNumber = 0;
     int discNumber = 0;
@@ -25,6 +22,8 @@ struct Track {
     bool isValid() const { return !path.isEmpty(); }
     QString displayTitle() const;
     QString displayArtist() const;
+    // Albums are folders: this is the name of the folder holding the file,
+    // whatever the album tag says.
     QString displayAlbum() const;
 };
 

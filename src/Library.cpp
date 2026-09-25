@@ -3,7 +3,6 @@
 #include "ImageUtils.h"
 #include "MetadataReader.h"
 
-#include <QCollator>
 #include <QCryptographicHash>
 #include <QDateTime>
 #include <QDir>
@@ -19,7 +18,7 @@
 namespace {
 
 constexpr quint32 kCacheMagic = 0x414d4252; // "AMBR"
-constexpr quint32 kCacheVersion = 1;
+constexpr quint32 kCacheVersion = 2;
 constexpr int kThumbnailSize = 128;
 
 struct CacheEntry {
@@ -27,6 +26,49 @@ struct CacheEntry {
     qint64 size = 0;
     Track track;
 };
+
+// "Track 2" before "Track 10", case-insensitively. Done by hand because
+// QCollator's numeric mode silently does nothing without ICU or in the C locale.
+int naturalCompare(const QString &a, const QString &b)
+{
+    qsizetype i = 0, j = 0;
+    while (i < a.size() && j < b.size()) {
+        if (a[i].isDigit() && b[j].isDigit()) {
+            qsizetype ei = i, ej = j;
+            while (ei < a.size() && a[ei].isDigit())
+                ++ei;
+            while (ej < b.size() && b[ej].isDigit())
+                ++ej;
+            // Compare digit runs by value: strip leading zeros, then length, then digits.
+            qsizetype zi = i, zj = j;
+            while (zi < ei - 1 && a[zi] == QLatin1Char('0'))
+                ++zi;
+            while (zj < ej - 1 && b[zj] == QLatin1Char('0'))
+                ++zj;
+            if (ei - zi != ej - zj)
+                return ei - zi < ej - zj ? -1 : 1;
+            const int digits = QStringView(a).mid(zi, ei - zi).compare(QStringView(b).mid(zj, ej - zj));
+            if (digits != 0)
+                return digits;
+            i = ei;
+            j = ej;
+            continue;
+        }
+        const QChar ca = a[i].toCaseFolded(), cb = b[j].toCaseFolded();
+        if (ca != cb)
+            return ca < cb ? -1 : 1;
+        ++i;
+        ++j;
+    }
+    if (i < a.size() || j < b.size())
+        return i < a.size() ? 1 : -1;
+    return a.compare(b); // e.g. "a1" vs "a01": fall back to a stable order
+}
+
+bool naturalLess(const QString &a, const QString &b)
+{
+    return naturalCompare(a, b) < 0;
+}
 
 QString cacheDir()
 {
@@ -74,23 +116,16 @@ void saveTagCache(const QHash<QString, CacheEntry> &cache)
     file.commit();
 }
 
-QString albumKey(const Track &t)
-{
-    // Group by album title plus album artist; without an album artist, tracks
-    // of the same album title in the same folder belong together, which keeps
-    // compilations in one piece.
-    const QString owner = t.albumArtist.isEmpty() ? QFileInfo(t.path).absolutePath()
-                                                  : t.albumArtist.toLower();
-    return t.album.toLower() + QChar(0x1f) + owner;
-}
-
 QString thumbnailCachePath(const QString &albumKey, const QString &firstTrack)
 {
-    const QFileInfo info(firstTrack);
+    // The album key is the folder; its timestamp changes when a cover image is
+    // added, removed or renamed there.
     QCryptographicHash hash(QCryptographicHash::Sha1);
+    hash.addData(QByteArrayLiteral("folder-albums"));
     hash.addData(albumKey.toUtf8());
+    hash.addData(QByteArray::number(QFileInfo(albumKey).lastModified().toMSecsSinceEpoch()));
     hash.addData(firstTrack.toUtf8());
-    hash.addData(QByteArray::number(info.lastModified().toMSecsSinceEpoch()));
+    hash.addData(QByteArray::number(QFileInfo(firstTrack).lastModified().toMSecsSinceEpoch()));
     return cacheDir() + QStringLiteral("/thumbs/") + QString::fromLatin1(hash.result().toHex());
 }
 
@@ -132,9 +167,7 @@ QStringList Library::collectFiles(const QString &directory)
                     QDirIterator::Subdirectories | QDirIterator::FollowSymlinks);
     while (it.hasNext())
         files << it.next();
-    QCollator collator;
-    collator.setNumericMode(true);
-    std::sort(files.begin(), files.end(), collator);
+    std::sort(files.begin(), files.end(), naturalLess);
     return files;
 }
 
@@ -208,60 +241,37 @@ Library::ScanResult Library::runScan(const QString &root, std::shared_ptr<std::a
     }
     saveTagCache(newCache);
 
-    // Group into albums.
-    QHash<QString, int> indexByKey;
+    // One album per folder.
+    const QDir rootDir(root);
+    QHash<QString, int> indexByFolder;
     for (const Track &t : std::as_const(tracks)) {
-        const QString key = albumKey(t);
-        auto found = indexByKey.constFind(key);
-        if (found == indexByKey.constEnd()) {
+        const QString folder = QFileInfo(t.path).absolutePath();
+        auto found = indexByFolder.constFind(folder);
+        if (found == indexByFolder.constEnd()) {
             Album album;
-            album.key = key;
-            album.title = t.displayAlbum();
-            found = indexByKey.insert(key, int(result.albums.size()));
+            album.key = folder;
+            album.title = QDir(folder).dirName();
+            // Where the folder sits, e.g. "Artist" for Artist/Album; the root
+            // folder's own name for albums at the top level.
+            const QString parent = rootDir.relativeFilePath(QFileInfo(folder).absolutePath());
+            album.location = (parent.isEmpty() || parent == QLatin1String(".") || parent.startsWith(QLatin1String("..")))
+                ? rootDir.dirName()
+                : QDir::toNativeSeparators(parent);
+            found = indexByFolder.insert(folder, int(result.albums.size()));
             result.albums.push_back(album);
         }
         result.albums[*found].tracks.push_back(t);
     }
 
-    QCollator collator;
-    collator.setNumericMode(true);
-    collator.setCaseSensitivity(Qt::CaseInsensitive);
-
     for (Album &album : result.albums) {
-        std::sort(album.tracks.begin(), album.tracks.end(), [&](const Track &a, const Track &b) {
-            if (a.discNumber != b.discNumber)
-                return a.discNumber < b.discNumber;
-            if (a.trackNumber != b.trackNumber)
-                return a.trackNumber < b.trackNumber;
-            return collator.compare(a.path, b.path) < 0;
+        std::sort(album.tracks.begin(), album.tracks.end(), [](const Track &a, const Track &b) {
+            return naturalLess(QFileInfo(a.path).fileName(), QFileInfo(b.path).fileName());
         });
-
-        QString artist;
-        bool various = false;
-        for (const Track &t : std::as_const(album.tracks)) {
-            if (!t.albumArtist.isEmpty()) {
-                artist = t.albumArtist;
-                various = false;
-                break;
-            }
-            if (artist.isEmpty())
-                artist = t.artist;
-            else if (!t.artist.isEmpty() && t.artist.compare(artist, Qt::CaseInsensitive) != 0)
-                various = true;
-        }
-        for (const Track &t : std::as_const(album.tracks))
-            album.year = qMax(album.year, t.year);
-        album.artist = various ? QStringLiteral("Various Artists")
-                               : (artist.isEmpty() ? QStringLiteral("Unknown Artist") : artist);
     }
 
+    // Folder order: Artist/Album layouts end up sorted by artist, then album.
     std::sort(result.albums.begin(), result.albums.end(), [&](const Album &a, const Album &b) {
-        const int byArtist = collator.compare(a.artist, b.artist);
-        if (byArtist != 0)
-            return byArtist < 0;
-        if (a.year != b.year)
-            return a.year < b.year;
-        return collator.compare(a.title, b.title) < 0;
+        return naturalLess(rootDir.relativeFilePath(a.key), rootDir.relativeFilePath(b.key));
     });
 
     return result;
@@ -311,10 +321,8 @@ void Library::runThumbnails(QVector<ThumbJob> jobs, std::shared_ptr<std::atomic_
         } else if (QFileInfo::exists(cached + QStringLiteral(".jpg"))) {
             thumb.load(cached + QStringLiteral(".jpg"));
         } else {
-            QImage cover = Metadata::readEmbeddedCover(job.paths.first());
-            if (cover.isNull())
-                cover = Metadata::findFolderCover(QFileInfo(job.paths.first()).absolutePath());
-            for (int i = 1; cover.isNull() && i < job.paths.size(); ++i)
+            QImage cover = Metadata::findFolderCover(job.key);
+            for (int i = 0; cover.isNull() && i < job.paths.size(); ++i)
                 cover = Metadata::readEmbeddedCover(job.paths[i]);
             thumb = ImageUtils::squareThumbnail(cover, kThumbnailSize);
             if (thumb.isNull()) {

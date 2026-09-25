@@ -4,6 +4,7 @@
 #include "Theme.h"
 
 #include <QContextMenuEvent>
+#include <QDir>
 #include <QHeaderView>
 #include <QMenu>
 #include <QMimeData>
@@ -106,12 +107,10 @@ private:
         p->setPen(Theme::textDim);
         p->drawText(QRect(r.left() + kTextLeft, y, textWidth, fm.height()),
                     Qt::AlignLeft | Qt::AlignVCenter,
-                    fm.elidedText(album->artist, Qt::ElideRight, textWidth));
+                    fm.elidedText(album->location, Qt::ElideRight, textWidth));
         y += fm.height() + 1;
 
         QStringList meta;
-        if (album->year > 0)
-            meta << QString::number(album->year);
         meta << (album->tracks.size() == 1
                      ? LibraryView::tr("1 track")
                      : LibraryView::tr("%1 tracks").arg(album->tracks.size()));
@@ -142,9 +141,8 @@ private:
     void paintTrack(QPainter *p, const QStyleOptionViewItem &option, const QModelIndex &index,
                     bool selected) const
     {
-        const Album *album = m_view->albumAt(index);
         const Track *track = m_view->trackAt(index);
-        if (!album || !track)
+        if (!track)
             return;
         const QRect r = option.rect;
         p->fillRect(QRect(r.left(), r.top(), 3, r.height()),
@@ -158,10 +156,10 @@ private:
 
         p->setFont(option.font);
         p->setPen(Theme::textFaint);
-        if (track->trackNumber > 0)
-            p->drawText(QRect(numberLeft, r.top(), numberWidth, r.height()),
-                        Qt::AlignRight | Qt::AlignVCenter,
-                        QStringLiteral("%1").arg(track->trackNumber, 2, 10, QLatin1Char('0')));
+        // Position in the folder, which is the album's track order.
+        p->drawText(QRect(numberLeft, r.top(), numberWidth, r.height()), Qt::AlignRight | Qt::AlignVCenter,
+                    QStringLiteral("%1").arg(index.data(LibraryView::TrackIndexRole).toInt() + 1, 2, 10,
+                                             QLatin1Char('0')));
 
         const int right = r.right() - kPad - 4;
         p->setPen(Theme::textDim);
@@ -172,7 +170,7 @@ private:
         const int titleWidth = right - durationWidth - 12 - titleLeft;
         QString title = track->displayTitle();
         QString extra;
-        if (!track->artist.isEmpty() && track->artist.compare(album->artist, Qt::CaseInsensitive) != 0)
+        if (!track->artist.isEmpty())
             extra = QStringLiteral("  ") + track->artist;
 
         const QString titleShown = fm.elidedText(title, Qt::ElideRight, titleWidth);
@@ -240,7 +238,7 @@ void LibraryView::setAlbums(const QVector<Album> &albums)
         albumItem->setData(0, Qt::DisplayRole, album.title);
         albumItem->setData(0, KindRole, AlbumItem);
         albumItem->setData(0, AlbumIndexRole, a);
-        albumItem->setToolTip(0, QStringLiteral("%1\n%2").arg(album.title, album.artist));
+        albumItem->setToolTip(0, QDir::toNativeSeparators(album.key));
         for (int t = 0; t < album.tracks.size(); ++t) {
             auto *trackItem = new QTreeWidgetItem(albumItem);
             trackItem->setData(0, Qt::DisplayRole, album.tracks[t].displayTitle());
@@ -288,8 +286,7 @@ void LibraryView::setFilter(const QString &text)
             continue;
         }
 
-        const QString albumText = normalized(album.title + QLatin1Char(' ') + album.artist + QLatin1Char(' ')
-                                             + (album.year ? QString::number(album.year) : QString()));
+        const QString albumText = normalized(album.title + QLatin1Char(' ') + album.location);
         const bool albumMatches = matches(albumText);
         bool anyTrack = false;
         for (int t = 0; t < albumItem->childCount(); ++t) {

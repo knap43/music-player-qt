@@ -11,17 +11,20 @@
 #include <atomic>
 #include <memory>
 
+// An album is a folder that directly contains audio files. Tags play no part
+// in deciding what belongs together, what the album is called, or the order
+// of its tracks.
 struct Album {
-    QString key;
-    QString title;
-    QString artist;
-    int year = 0;
-    QVector<Track> tracks;
+    QString key;      // absolute folder path
+    QString title;    // folder name
+    QString location; // parent folder, relative to the library root
+    QVector<Track> tracks; // in natural file-name order
 
     qint64 durationMs() const;
 };
 
-// Scans a music folder in the background and groups its files into albums.
+// Scans a music folder in the background; every folder with audio files in it
+// becomes an album.
 // Tags are cached on disk (keyed by modification time and size), so rescans
 // only have to read files that changed; album thumbnails are cached too.
 class Library : public QObject

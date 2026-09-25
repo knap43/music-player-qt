@@ -62,4 +62,10 @@ if(AMBER_BUILD_TESTS)
         target_link_libraries(tst_${test} PRIVATE Qt6::Core Qt6::Test)
         add_test(NAME ${test} COMMAND tst_${test})
     endforeach()
+
+    qt_add_executable(tst_library tests/tst_library.cpp
+        src/Library.cpp src/MetadataReader.cpp src/ImageUtils.cpp src/Lyrics.cpp src/Track.cpp)
+    target_include_directories(tst_library PRIVATE src)
+    target_link_libraries(tst_library PRIVATE Qt6::Gui Qt6::Concurrent Qt6::Test PkgConfig::TAGLIB)
+    add_test(NAME library COMMAND tst_library)
 endif()

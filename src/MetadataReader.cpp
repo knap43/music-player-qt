@@ -54,7 +54,7 @@ QByteArray fileName(const QString &path)
     return QFile::encodeName(path);
 }
 
-// Fill whatever the tags did not provide from the file and folder names.
+// Fill whatever the tags did not provide from the file name.
 void applyFallbacks(Track &t)
 {
     const QFileInfo info(t.path);
@@ -74,8 +74,6 @@ void applyFallbacks(Track &t)
         }
         t.title = base;
     }
-    if (t.album.isEmpty())
-        t.album = info.dir().dirName();
 }
 
 QImage imageFromData(const QByteArray &data)
@@ -206,14 +204,11 @@ Track readTrack(const QString &path)
         if (TagLib::Tag *tag = ref.tag()) {
             t.title = toQString(tag->title());
             t.artist = toQString(tag->artist());
-            t.album = toQString(tag->album());
-            t.genre = toQString(tag->genre());
             t.year = int(tag->year());
             t.trackNumber = int(tag->track());
-            t.tagged = !t.title.isEmpty() || !t.artist.isEmpty() || !t.album.isEmpty();
+            t.tagged = !t.title.isEmpty() || !t.artist.isEmpty();
         }
         const TagLib::PropertyMap props = ref.file()->properties();
-        t.albumArtist = firstProperty(props, {"ALBUMARTIST", "ALBUM ARTIST", "ALBUM_ARTIST"});
         t.discNumber = leadingNumber(firstProperty(props, {"DISCNUMBER"}));
         if (t.trackNumber == 0)
             t.trackNumber = leadingNumber(firstProperty(props, {"TRACKNUMBER"}));
@@ -279,9 +274,9 @@ QImage findFolderCover(const QString &directory)
 
 QImage readCover(const QString &path)
 {
-    QImage image = readEmbeddedCover(path);
+    QImage image = findFolderCover(QFileInfo(path).absolutePath());
     if (image.isNull())
-        image = findFolderCover(QFileInfo(path).absolutePath());
+        image = readEmbeddedCover(path);
     return image;
 }
 

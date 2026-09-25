@@ -1,5 +1,6 @@
 #include "Track.h"
 
+#include <QDir>
 #include <QFileInfo>
 
 QString Track::displayTitle() const
@@ -14,13 +15,12 @@ QString Track::displayArtist() const
 
 QString Track::displayAlbum() const
 {
-    return album.isEmpty() ? QStringLiteral("Unknown Album") : album;
+    return QFileInfo(path).dir().dirName();
 }
 
 QDataStream &operator<<(QDataStream &out, const Track &t)
 {
-    out << t.path << t.title << t.artist << t.album << t.albumArtist << t.genre
-        << qint32(t.year) << qint32(t.trackNumber) << qint32(t.discNumber)
+    out << t.path << t.title << t.artist << qint32(t.year) << qint32(t.trackNumber) << qint32(t.discNumber)
         << qint64(t.durationMs) << t.tagged;
     return out;
 }
@@ -29,8 +29,7 @@ QDataStream &operator>>(QDataStream &in, Track &t)
 {
     qint32 year = 0, trackNumber = 0, discNumber = 0;
     qint64 duration = 0;
-    in >> t.path >> t.title >> t.artist >> t.album >> t.albumArtist >> t.genre
-       >> year >> trackNumber >> discNumber >> duration >> t.tagged;
+    in >> t.path >> t.title >> t.artist >> year >> trackNumber >> discNumber >> duration >> t.tagged;
     t.year = year;
     t.trackNumber = trackNumber;
     t.discNumber = discNumber;

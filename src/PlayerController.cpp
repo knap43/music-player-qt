@@ -260,8 +260,7 @@ void PlayerController::onMetaDataChanged()
         const QString title = md.stringValue(QMediaMetaData::Title).trimmed();
         const QString artist = md.stringValue(QMediaMetaData::ContributingArtist).trimmed();
         const QString albumArtist = md.stringValue(QMediaMetaData::AlbumArtist).trimmed();
-        const QString album = md.stringValue(QMediaMetaData::AlbumTitle).trimmed();
-        if (title.isEmpty() && artist.isEmpty() && album.isEmpty())
+        if (title.isEmpty() && artist.isEmpty() && albumArtist.isEmpty())
             return;
         if (!title.isEmpty())
             m_track.title = title;
@@ -269,8 +268,6 @@ void PlayerController::onMetaDataChanged()
             m_track.artist = artist;
         else if (!albumArtist.isEmpty())
             m_track.artist = albumArtist;
-        if (!album.isEmpty())
-            m_track.album = album;
         m_track.tagged = true;
         updateQueueEntry();
         emit trackChanged(m_track);
